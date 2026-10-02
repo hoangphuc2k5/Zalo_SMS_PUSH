@@ -1,0 +1,141 @@
+<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Notification Gateway</title><link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22><text y=%2213%22 font-size=%2213%22>🔔</text></svg>">
+<style>
+:root{--bg:#f5f6f8;--pn:#fff;--tx:#1b2430;--mu:#6b7686;--bd:#e1e5ea;--ac:#0b6e6e;--ac2:#e8f3f3;--ok:#157f4a;--er:#c0392b;--wr:#b7791f}
+@media(prefers-color-scheme:dark){:root{--bg:#12161b;--pn:#1a2027;--tx:#e6eaee;--mu:#93a0af;--bd:#2a323c;--ac:#3fb8b0;--ac2:#18312f;--ok:#4cc38a;--er:#ef6f62;--wr:#e0a84a}}
+*{box-sizing:border-box}body{margin:0;font:14px/1.5 system-ui,"Segoe UI",sans-serif;background:var(--bg);color:var(--tx)}
+a{color:inherit;text-decoration:none}
+#app{display:grid;grid-template-columns:230px 1fr;min-height:100vh}
+aside{background:var(--pn);border-right:1px solid var(--bd);padding:16px 10px}
+aside b{display:block;padding:4px 10px 16px;font-size:16px}
+aside a{display:block;padding:8px 10px;border-radius:6px;color:var(--mu)}aside a.sub{padding-left:28px}
+aside a.on{background:var(--ac2);color:var(--ac);font-weight:600}
+main{min-width:0}header{display:flex;gap:16px;align-items:center;padding:12px 24px;background:var(--pn);border-bottom:1px solid var(--bd)}
+header .sp{flex:1}.dot{color:var(--ok)}#view{padding:24px;max-width:1200px}
+h1{font-size:20px;margin:0 0 16px}h2{font-size:15px;margin:0 0 12px}
+.grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));margin-bottom:16px}
+.card{background:var(--pn);border:1px solid var(--bd);border-radius:8px;padding:16px;min-width:0}
+.big{font-size:26px;font-weight:700}.mu{color:var(--mu)}.sm{font-size:12px}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--bd);white-space:nowrap;max-width:260px;overflow:hidden;text-overflow:ellipsis}
+th{color:var(--mu);font-weight:600;font-size:12px}tr.c{cursor:pointer}tr.c:hover{background:var(--ac2)}.tw{overflow-x:auto}
+button,input,select,textarea{font:inherit;color:inherit}
+.b{background:var(--pn);border:1px solid var(--bd);border-radius:6px;padding:7px 12px;cursor:pointer}.b:hover{border-color:var(--ac)}
+.p{background:var(--ac);border-color:var(--ac);color:#fff}.d{color:var(--er)}.b:disabled{opacity:.5;cursor:not-allowed}
+input,select,textarea{width:100%;background:var(--bg);border:1px solid var(--bd);border-radius:6px;padding:8px 10px}
+label{display:block;margin:12px 0 4px;font-weight:600;font-size:13px}.f{max-width:520px}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.tag{padding:2px 8px;border-radius:10px;font-size:12px;background:var(--ac2);color:var(--ac)}.sent,.on2{color:var(--ok)}.failed,.off{color:var(--er)}.pending{color:var(--wr)}
+.seg button.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+pre{background:var(--bg);padding:10px;border-radius:6px;overflow:auto;font-size:12px;margin:4px 0}
+.bar{height:8px;background:var(--bd);border-radius:4px;overflow:hidden}.bar i{display:block;height:100%;background:var(--ac)}
+#toast{position:fixed;right:16px;bottom:16px;display:grid;gap:8px;z-index:9}
+#toast div{background:var(--tx);color:var(--bg);padding:10px 14px;border-radius:6px}
+.mask{position:fixed;inset:0;background:#0007;display:grid;place-items:center;z-index:8;padding:16px}.mask .card{width:min(560px,100%);max-height:90vh;overflow:auto}
+.res{margin-top:16px;padding:12px;border-radius:6px;border:1px solid var(--bd)}
+#login{max-width:340px;margin:12vh auto;position:relative;z-index:1}
+#login input{pointer-events:auto;cursor:text;-webkit-user-select:text;user-select:text}
+@media(max-width:800px){#app{grid-template-columns:1fr}aside{display:flex;overflow-x:auto;padding:8px}aside b{display:none}aside a{white-space:nowrap}}
+</style></head><body>
+<div id="root"></div><div id="toast"></div>
+<script>
+const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const nf=n=>Number(n).toLocaleString('en-US'),dt=s=>s?new Date(s).toLocaleString('vi-VN'):'—',NAME={sms:'SMS',zalo:'Zalo',push:'Push'};
+let T=sessionStorage.t,RANGE={dash:'7d',stat:'30d'};
+function toast(m,err){const d=document.createElement('div');d.textContent=(err?'✕ ':'✓ ')+m;$('#toast').append(d);setTimeout(()=>d.remove(),3500)}
+async function api(p,o={}){const r=await fetch('/api'+p,{method:o.method||'GET',headers:{'Content-Type':'application/json',Authorization:'Bearer '+T},body:o.body?JSON.stringify(o.body):undefined});
+  const d=await r.json().catch(()=>({}));if(r.status===401&&p!=='/auth/login'){sessionStorage.removeItem('t');T=null;render()}
+  if(!r.ok)throw new Error(d.error||'Request failed');return d}
+function modal(html){const m=document.createElement('div');m.className='mask';m.innerHTML='<div class="card">'+html+'</div>';m.onclick=e=>{if(e.target===m)m.remove()};document.body.append(m);return m}
+const confirmBox=(msg,fn)=>{const m=modal(`<h2>Confirm</h2><p>${esc(msg)}</p><div class="row"><button class="b d" id="y">Confirm</button><button class="b" id="n">Cancel</button></div>`);m.querySelector('#n').onclick=()=>m.remove();m.querySelector('#y').onclick=()=>{m.remove();fn()}};
+const seg=(opts,cur,k)=>`<div class="row seg">${opts.map(o=>`<button class="b ${o[0]===cur?'on':''}" data-r="${o[0]}" data-k="${k}">${o[1]}</button>`).join('')}</div>`;
+const st=s=>`<span class="${s==='sent'?'sent':s==='failed'?'failed':'pending'}">● ${s[0].toUpperCase()+s.slice(1)}</span>`;
+const conn=g=>g.enabled?'<span class="on2">● Connected</span>':'<span class="off">● Disabled</span>';
+
+function bars(d){if(!d.length)return'<p class="mu">No data in this range.</p>';const mx=Math.max(...d.map(x=>x.sent+x.failed),1),w=Math.max(10,Math.floor(640/d.length));
+  return`<div class="tw"><svg width="${d.length*w+10}" height="190" role="img" aria-label="Notifications per day">${d.map((x,i)=>{const hs=x.sent/mx*150,hf=x.failed/mx*150;
+  return`<g><title>${x.date}: ${x.sent} sent, ${x.failed} failed</title><rect x="${i*w+4}" y="${160-hs}" width="${w-4}" height="${hs}" fill="var(--ac)"/><rect x="${i*w+4}" y="${160-hs-hf}" width="${w-4}" height="${hf}" fill="var(--er)"/>${d.length<=14?`<text x="${i*w+4}" y="178" font-size="10" fill="var(--mu)">${x.date.slice(5)}</text>`:''}</g>`}).join('')}</svg></div><div class="sm mu">■ Success &nbsp;<span style="color:var(--er)">■</span> Failed</div>`}
+const share=by=>{const t=Object.values(by).reduce((a,b)=>a+b,0)||1;return Object.entries(by).map(([k,v])=>`<div class="sm" style="margin:8px 0 2px">${NAME[k]} — ${Math.round(v/t*100)}% (${nf(v)})</div><div class="bar"><i style="width:${v/t*100}%"></i></div>`).join('')};
+
+const pages={
+async dash(){const d=await api('/dashboard?range='+RANGE.dash);
+  return`<h1>Dashboard</h1><div class="grid">${[['Total Sent',nf(d.total)],['Success Rate',d.successRate+'%'],['Failed',nf(d.failed)],['Active Gateways',d.gateways.filter(g=>g.enabled).length+' / 3']].map(c=>`<div class="card"><div class="mu">${c[0]}</div><div class="big">${c[1]}</div></div>`).join('')}</div>
+  <div class="grid">${d.gateways.map(g=>`<div class="card"><div class="row"><b>${g.name}</b><span class="sp"></span>${conn(g)}</div><div class="sm mu" style="margin:6px 0;word-break:break-all">${esc(g.url)}</div>
+  <div class="sm">Today: ${g.requestsToday} requests · <span class="sent">${g.successToday} success</span> · <span class="failed">${g.failedToday} failed</span><br>Last request: ${dt(g.lastRequest)}</div>
+  <div class="row" style="margin-top:10px"><a class="b" href="#/gateways/${g.id}">Manage</a><button class="b" data-test="${g.id}">Test</button></div></div>`).join('')}</div>
+  <div class="row" style="margin-bottom:12px">${seg([['today','Today'],['7d','7 Days'],['30d','30 Days'],['90d','90 Days']],RANGE.dash,'dash')}</div>
+  <div class="grid" style="grid-template-columns:2fr 1fr"><div class="card"><h2>Notifications per day</h2>${bars(d.perDay)}</div><div class="card"><h2>By channel</h2>${share(d.byChannel)}</div></div>`},
+async gateways(){const g=await api('/gateways');
+  return`<div class="row"><h1 style="flex:1">Gateways</h1><button class="b p" disabled title="Gateways are fixed to SMS, Zalo and Push in this version">+ Add Gateway</button></div><div class="card tw"><table><tr><th>Gateway</th><th>Type</th><th>URL</th><th>Status</th><th>Requests (30d)</th><th>Success Rate</th><th></th></tr>
+  ${g.map(x=>`<tr><td>${x.name}</td><td>${x.name}</td><td>${esc(x.url)}</td><td>${conn(x)}</td><td>${nf(x.requests)}</td><td>${x.successRate}%</td><td><a class="b" href="#/gateways/${x.id}">Manage</a></td></tr>`).join('')}</table></div>`},
+async gateway(id){const g=await api('/gateways/'+id);
+  return`<h1>${g.name} Gateway</h1><div class="card f"><div>Status: ${conn(g)}</div>
+  <label>Enabled</label><label class="row" style="font-weight:400"><input type="checkbox" id="en" style="width:auto" ${g.enabled?'checked':''}> ${g.enabled?'ON':'OFF'}</label>
+  <label>Gateway URL</label><input id="url" value="${esc(g.url)}">
+  <label>Gateway Token</label><div class="row"><input id="tok" type="password" placeholder="•••••••••••••• (leave blank to keep current)" style="flex:1" autocomplete="off"><button class="b" id="eye" type="button">👁</button></div>
+  <label>Timeout (ms)</label><input id="to" type="number" value="${g.timeout}"><label>Retry Attempts</label><input id="rt" type="number" value="${g.retries}">
+  <div class="row" style="margin-top:16px"><button class="b p" id="save">Save Changes</button><button class="b" id="tst">Test Connection</button></div><div id="out"></div></div>`},
+async send(){return`<h1>Send Notification</h1><div class="card f"><label>Channel</label><select id="ch"><option value="sms">SMS</option><option value="zalo">Zalo</option><option value="push">Push</option></select>
+  <label id="rl">Phone Number</label><input id="rc" placeholder="0901234567"><label>Title</label><input id="ti" value="Thông báo"><label>Message</label><textarea id="ms" rows="4" maxlength="1000"></textarea>
+  <div class="mu sm">Tip: include [fail] in the message to simulate a gateway failure.</div><div style="margin-top:12px"><button class="b p" id="go">Send Notification</button></div><div id="out"></div></div>`},
+async history(){const q=new URLSearchParams(location.hash.split('?')[1]||''),d=await api('/notifications?'+q);
+  const sel=(n,o)=>`<select data-f="${n}"><option value="">All</option>${o.map(v=>`<option ${q.get(n)===v?'selected':''}>${v}</option>`).join('')}</select>`;
+  return`<h1>Notification History</h1><div class="card" style="margin-bottom:16px"><div class="row"><div style="width:120px">${sel('channel',['sms','zalo','push'])}</div><div style="width:120px">${sel('status',['sent','failed','pending'])}</div>
+  <input data-f="from" type="date" value="${q.get('from')||''}" style="width:150px"><input data-f="to" type="date" value="${q.get('to')||''}" style="width:150px"><input data-f="search" placeholder="Search..." value="${esc(q.get('search')||'')}" style="width:200px"><button class="b" id="apply">Apply</button></div></div>
+  <div class="card tw">${d.items.length?`<table><tr><th>Time</th><th>Channel</th><th>Recipient</th><th>Message</th><th>Status</th><th>Message ID</th><th>Response</th></tr>
+  ${d.items.map(x=>`<tr class="c" data-log="${x.id}"><td>${dt(x.createdAt)}</td><td><span class="tag">${NAME[x.channel]}</span></td><td>${esc(x.recipient)}</td><td>${esc(x.message)}</td><td>${st(x.status)}</td><td>${esc(x.messageId||'—')}</td><td>${x.responseCode} · ${x.responseTime}ms</td></tr>`).join('')}</table>`:'<p class="mu">No notifications match these filters.</p>'}</div>
+  <p class="sm mu">${d.total} results · page ${d.page}</p><div class="row"><button class="b" data-pg="${d.page-1}" ${d.page<2?'disabled':''}>Prev</button><button class="b" data-pg="${d.page+1}" ${d.page*d.size>=d.total?'disabled':''}>Next</button></div>`},
+async stats(){const d=await api('/statistics?range='+RANGE.stat);
+  return`<h1>Statistics</h1><div class="row" style="margin-bottom:12px">${seg([['today','Today'],['7d','7 Days'],['30d','30 Days'],['90d','90 Days']],RANGE.stat,'stat')}</div>
+  <div class="card" style="margin-bottom:16px"><h2>Requests</h2>${bars(d.perDay)}</div><div class="grid"><div class="card"><h2>By gateway</h2>${share(d.byChannel)}</div>
+  <div class="card"><h2>Success rate</h2>${d.gateways.map(g=>`<div class="row" style="justify-content:space-between;padding:6px 0"><span>${NAME[g.id]}</span><b>${g.successRate}%</b></div>`).join('')}</div></div>`},
+async settings(){const [s,k]=await Promise.all([api('/settings'),api('/api-keys')]);
+  return`<h1>Settings</h1><div class="card f"><label>Default Gateway</label><select id="dg">${['sms','zalo','push'].map(v=>`<option value="${v}" ${s.defaultGateway===v?'selected':''}>${NAME[v]}</option>`).join('')}</select>
+  <label>Global Timeout (ms)</label><input id="gt" type="number" value="${s.timeout}"><label>Default Retry</label><input id="gr" type="number" value="${s.retries}">
+  <label class="row" style="font-weight:400"><input type="checkbox" id="lg" style="width:auto" ${s.logging?'checked':''}> Enable Logging</label><label class="row" style="font-weight:400"><input type="checkbox" id="hs" style="width:auto" ${s.history?'checked':''}> Enable Notification History</label>
+  <div class="row" style="margin-top:16px"><button class="b p" id="ss">Save Settings</button><button class="b" id="rs">Reset</button></div></div>
+  <div class="row" style="margin:24px 0 12px"><h1 style="flex:1;margin:0">API Keys</h1><button class="b p" id="nk">Create API Key</button></div>
+  <div class="card tw">${k.length?`<table><tr><th>Name</th><th>Key</th><th>Created</th><th>Last Used</th><th>Status</th><th></th></tr>${k.map(x=>`<tr><td>${esc(x.name)}</td><td>${x.preview}</td><td>${dt(x.createdAt)}</td><td>${dt(x.lastUsed)}</td><td>${x.status==='active'?'<span class="on2">● Active</span>':'<span class="off">● Revoked</span>'}</td><td>${x.status==='active'?`<button class="b d" data-rv="${x.id}">Revoke</button>`:''}</td></tr>`).join('')}</table>`:'<p class="mu">No API keys yet. Create one to call the send API from your own systems.</p>'}</div>`}
+};
+
+async function route(){const h=location.hash.replace('#','')||'/',p=h.split('?')[0].split('/').filter(Boolean),v=$('#view');
+  document.querySelectorAll('aside a').forEach(a=>a.classList.toggle('on',a.getAttribute('href')==='#'+p.slice(0,2).map(x=>'/'+x).join('')||(a.getAttribute('href')==='#/'&&!p.length)));
+  const map={'':'dash',gateways:p[1]?'gateway':'gateways',notifications:p[1]==='history'?'history':'send',statistics:'stats',settings:'settings'};
+  v.innerHTML='<p class="mu">Loading...</p>';
+  try{v.innerHTML=await pages[map[p[0]||'']||'dash'](p[1]);bind(p)}catch(e){v.innerHTML=`<div class="card"><b class="failed">Could not load this page.</b><p>${esc(e.message)}</p><button class="b" onclick="route()">Retry</button></div>`}}
+function bind(p){
+  document.querySelectorAll('[data-r]').forEach(b=>b.onclick=()=>{RANGE[b.dataset.k]=b.dataset.r;route()});
+  document.querySelectorAll('[data-test]').forEach(b=>b.onclick=async()=>{b.disabled=true;try{const r=await api(`/gateways/${b.dataset.test}/test`,{method:'POST'});toast(r.ok?`${b.dataset.test.toUpperCase()}: connected, ${r.responseTime}ms`:`${b.dataset.test.toUpperCase()}: failed (${r.status})`,!r.ok)}catch(e){toast(e.message,1)}b.disabled=false});
+  if(p[0]==='gateways'&&p[1]){const id=p[1],out=$('#out');
+    $('#eye').onclick=()=>{const t=$('#tok');t.type=t.type==='password'?'text':'password'};
+    $('#save').onclick=async()=>{try{await api('/gateways/'+id,{method:'PUT',body:{enabled:$('#en').checked,url:$('#url').value,token:$('#tok').value||undefined,timeout:+$('#to').value,retries:+$('#rt').value}});toast('Changes saved');route()}catch(e){toast(e.message,1)}};
+    $('#tst').onclick=async()=>{out.innerHTML='<div class="res">Testing gateway...</div>';try{const r=await api(`/gateways/${id}/test`,{method:'POST'});
+      out.innerHTML=r.ok?`<div class="res"><b class="sent">✓ Connection successful</b><br>Response time: ${r.responseTime}ms<br>Status: ${r.status} OK</div>`:`<div class="res"><b class="failed">✕ Connection failed</b><br>Status: ${r.status}<br>${esc(r.error)}</div>`}catch(e){out.innerHTML=`<div class="res failed">${esc(e.message)}</div>`}}}
+  if(p[0]==='notifications'&&p[1]!=='history'){const L={sms:['Phone Number','0901234567'],zalo:['Phone Number / User ID','0901234567'],push:['User ID / Device Token','user-demo']};
+    $('#ch').onchange=e=>{$('#rl').textContent=L[e.target.value][0];$('#rc').placeholder=L[e.target.value][1]};
+    $('#go').onclick=async()=>{const b=$('#go'),o=$('#out');b.disabled=true;o.innerHTML='';
+      try{const r=await api('/notifications/send',{method:'POST',body:{channel:$('#ch').value,recipient:$('#rc').value,title:$('#ti').value,message:$('#ms').value}});
+        o.innerHTML=`<div class="res"><b class="sent">✓ Notification sent successfully</b><br>Message ID:<br><b>${esc(r.messageId)}</b><br>Response time: ${r.responseTime}ms</div>`}
+      catch(e){o.innerHTML=`<div class="res"><b class="failed">✕ Notification failed</b><br>${esc(e.message)}</div>`}b.disabled=false}}
+  if(p[1]==='history'){$('#apply').onclick=()=>{const q=new URLSearchParams();document.querySelectorAll('[data-f]').forEach(i=>i.value&&q.set(i.dataset.f,i.value));location.hash='#/notifications/history?'+q};
+    document.querySelectorAll('[data-pg]').forEach(b=>b.onclick=()=>{const q=new URLSearchParams(location.hash.split('?')[1]||'');q.set('page',b.dataset.pg);location.hash='#/notifications/history?'+q});
+    document.querySelectorAll('[data-log]').forEach(r=>r.onclick=async()=>{const x=await api('/notifications/'+r.dataset.log);
+      modal(`<h2>Notification Detail</h2><b>Request</b><pre>${esc(JSON.stringify(x.request,null,2))}</pre><b>Response</b><pre>${esc(JSON.stringify(x.response,null,2))}</pre><p>Gateway: ${NAME[x.channel]}<br>Response Time: ${x.responseTime}ms<br>Created At: ${dt(x.createdAt)}${x.errorMessage?'<br>Error: '+esc(x.errorMessage):''}</p>`)})}
+  if(p[0]==='settings'){
+    $('#ss').onclick=async()=>{try{await api('/settings',{method:'PUT',body:{defaultGateway:$('#dg').value,timeout:+$('#gt').value,retries:+$('#gr').value,logging:$('#lg').checked,history:$('#hs').checked}});toast('Settings saved')}catch(e){toast(e.message,1)}};
+    $('#rs').onclick=()=>confirmBox('Reset all settings to defaults?',async()=>{await api('/settings/reset',{method:'POST'});toast('Settings reset');route()});
+    $('#nk').onclick=()=>{const m=modal('<h2>Create API Key</h2><label>Key name</label><input id="kn" placeholder="Production API Key"><div class="row" style="margin-top:12px"><button class="b p" id="kc">Create</button></div>');
+      m.querySelector('#kc').onclick=async()=>{try{const k=await api('/api-keys',{method:'POST',body:{name:m.querySelector('#kn').value}});m.remove();
+        modal(`<h2>Copy your key now</h2><p>This is the only time the full key is shown.</p><pre>${esc(k.secret)}</pre><button class="b p" onclick="this.closest('.mask').remove();route()">Done</button>`)}catch(e){toast(e.message,1)}}};
+    document.querySelectorAll('[data-rv]').forEach(b=>b.onclick=()=>confirmBox('Revoke this API key? Systems using it will stop working.',async()=>{await api('/api-keys/'+b.dataset.rv,{method:'DELETE'});toast('Key revoked');route()}))}}
+
+function render(){const r=$('#root');
+  if(!T){r.innerHTML=`<div id="login" class="card"><h1>Notification Gateway</h1><label>Username</label><input id="u" autocomplete="username"><label>Password</label><input id="pw" type="password" autocomplete="current-password"><div id="le" class="failed sm" style="margin:8px 0"></div><button class="b p" id="lg">Sign in</button></div>`;
+    const go=async()=>{try{T=(await api('/auth/login',{method:'POST',body:{username:$('#u').value,password:$('#pw').value}})).token;sessionStorage.t=T;render()}catch(e){$('#le').textContent=e.message}};
+    $('#lg').onclick=go;$('#pw').onkeydown=e=>{if(e.key==='Enter')go()};return}
+  r.innerHTML=`<div id="app"><aside><b>🔔 Notification Gateway</b><a href="#/">Dashboard</a><a href="#/gateways">Gateways</a><a class="sub" href="#/gateways/sms">SMS</a><a class="sub" href="#/gateways/zalo">Zalo</a><a class="sub" href="#/gateways/push">Push</a>
+  <a href="#/notifications/send">Send Notification</a><a href="#/notifications/history">History</a><a href="#/statistics">Statistics</a><a href="#/settings">Settings</a></aside>
+  <main><header><b>Notification Gateway</b><span class="mu" id="env">Environment: …</span><span class="sp"></span><span class="dot" id="sys">● System Online</span><span>Admin</span><button class="b" id="lo">Sign out</button></header><div id="view"></div></main></div>`;
+  $('#lo').onclick=()=>{sessionStorage.removeItem('t');T=null;render()};
+  fetch('/api/health').then(r=>r.json()).then(h=>$('#env').textContent='Environment: '+h.env).catch(()=>{$('#sys').textContent='● System Offline';$('#sys').style.color='var(--er)'});
+  route()}
+addEventListener('hashchange',()=>T&&route());render();
+</script></body></html>
