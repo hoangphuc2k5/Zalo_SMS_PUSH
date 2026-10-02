@@ -52,9 +52,10 @@ async function ensureSchema() {
     );
 
     INSERT INTO gateways (id, name, type) VALUES
-      ('sms',  'SMS',  'sms'),
-      ('zalo', 'Zalo', 'zalo'),
-      ('push', 'Push', 'push')
+      ('sms',    'SMS',    'sms'),
+      ('zalo',   'Zalo',   'zalo'),
+      ('push',   'Push',   'push'),
+      ('twilio', 'Twilio', 'twilio')
     ON CONFLICT (id) DO NOTHING;
 
     CREATE TABLE IF NOT EXISTS logs (

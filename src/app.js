@@ -28,10 +28,10 @@ app.post('/api/auth/login',rateLimit(10,60000),(req,res)=>{const{username,passwo
 const mockAuth=(q,s,n)=>eq((q.headers.authorization||'').replace('Bearer ',''),process.env.MOCK_TOKEN||'demo-token')?n():s.status(401).json({success:false,error:'Invalid gateway token'});
 const pick=(b,k)=>{for(const x of k)if(b[x]!==undefined&&b[x]!=='')return String(b[x]);return''};
 const redact=o=>Object.fromEntries(Object.entries(o).map(([k,v])=>[k,/token|secret|password|key|authorization/i.test(k)?'***':v]));
-['sms','zalo','push'].forEach(c=>app.post('/mock/'+c,mockAuth,(req,res)=>{const b=req.body||{},rid=crypto.randomBytes(3).toString('hex').toUpperCase();
+['sms','zalo','push','twilio'].forEach(c=>app.post('/mock/'+c,mockAuth,(req,res)=>{const b=req.body||{},rid=crypto.randomBytes(3).toString('hex').toUpperCase();
   if(b.test)return res.json({success:true,channel:c,messageId:c.toUpperCase()+'-TEST-'+rid,status:'ok'});
-  const to=pick(b,['phone','to','recipient','msisdn','user_id','userId','device_token']),title=pick(b,['title','subject']),
-    message=pick(b,['message','content','text','body','otp','code']);
+  const to=pick(b,['phone','to','recipient','msisdn','user_id','userId','device_token','To']),title=pick(b,['title','subject']),
+    message=pick(b,['message','content','text','body','otp','code','Body']);
   if(!to||!message)return res.status(400).json({success:false,error:'Missing recipient (phone/to/recipient) or message'});
   const otp=pick(b,['otp','code'])||(message.match(/(?<!\d)\d{4,8}(?!\d)/)||[])[0]||null,messageId=c.toUpperCase()+'-DEMO-'+rid;
   S.repos.inbox.add({id:id(),channel:c,recipient:to.slice(0,200),title:title.slice(0,200),message:message.slice(0,1000),otp,messageId,payload:redact(b),receivedAt:new Date().toISOString()}).catch(()=>{});
@@ -53,7 +53,7 @@ app.post('/api/gateways/:id/test',ah(async(q,s)=>s.json(await S.gm.test(q.params
 app.get('/api/notifications',ah(async(q,s)=>s.json(await S.history.list(q.query))));
 app.get('/api/notifications/:id',ah(async(q,s)=>s.json(await S.history.get(q.params.id))));
 app.get('/api/settings',ah(async(q,s)=>s.json(await S.repos.settings.get())));
-app.put('/api/settings',ah(async(q,s)=>{const b=q.body||{};if(!['sms','zalo','push'].includes(b.defaultGateway))return s.status(400).json({error:'Invalid default gateway'});
+app.put('/api/settings',ah(async(q,s)=>{const b=q.body||{};if(!['sms','zalo','push','twilio'].includes(b.defaultGateway))return s.status(400).json({error:'Invalid default gateway'});
   if(!(b.timeout>=500&&b.timeout<=15000)||!(b.retries>=0&&b.retries<=5))return s.status(400).json({error:'Timeout 500-15000, retry 0-5'});
   s.json(await S.repos.settings.set({defaultGateway:b.defaultGateway,timeout:+b.timeout,retries:+b.retries,logging:!!b.logging,history:!!b.history}))}));
 app.post('/api/settings/reset',ah(async(q,s)=>s.json(await S.repos.settings.reset())));
