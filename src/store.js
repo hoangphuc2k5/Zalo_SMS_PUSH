@@ -20,6 +20,10 @@ const dec = s => {
 const id = () => crypto.randomBytes(8).toString('hex');
 
 // ── Database pool ─────────────────────────────────────────────────────────────
+if (!process.env.DATABASE_URL) {
+  console.warn('[store] WARNING: DATABASE_URL is not set. Database queries will fail.');
+}
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false,
@@ -31,6 +35,9 @@ const pool = new Pool({
 // ── Schema bootstrap (runs once on first connection) ──────────────────────────
 let _ready = null;
 async function ensureSchema() {
+  if (!process.env.DATABASE_URL) {
+    throw new Error('DATABASE_URL environment variable is not configured. Please add DATABASE_URL in Vercel project settings.');
+  }
   if (_ready) return _ready;
   _ready = pool.query(`
     CREATE TABLE IF NOT EXISTS gateways (
@@ -99,7 +106,10 @@ async function ensureSchema() {
     );
 
     INSERT INTO settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
-  `);
+  `).catch(err => {
+    _ready = null;
+    throw err;
+  });
   return _ready;
 }
 
