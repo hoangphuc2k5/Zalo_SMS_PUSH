@@ -1,7 +1,7 @@
 const {repos,enc,id}=require('./store');
 const crypto=require('crypto');
 const {create}=require('./gateways');
-const CH=['sms','zalo','push','twilio'];
+const CH=['sms','zalo','push'];
 const bad=m=>Object.assign(new Error(m),{status:400});
 const nf=m=>Object.assign(new Error(m),{status:404});
 const RANGE={today:1,'7d':7,'30d':30,'90d':90};
@@ -37,29 +37,20 @@ class NotificationService{ // depends only on the gateway abstraction
     if(!CH.includes(channel))throw bad('Invalid channel');
     const recipient=String(b.recipient||'').trim(),message=String(b.message||'').trim(),title=String(b.title||'').trim();
     if(!recipient||recipient.length>200)throw bad('Recipient is required');
-    if((channel==='sms'||channel==='twilio')&&!/^\+?\d{9,15}$/.test(recipient))throw bad('Phone number must be 9-15 digits');
+    if(channel==='sms'&&!/^\+?\d{9,15}$/.test(recipient))throw bad('Phone number must be 9-15 digits');
     if(!message||message.length>1000)throw bad('Message is required (max 1000 chars)');
     if(title.length>100)throw bad('Title is too long');
-
-    // If channel is 'sms' and Twilio gateway is ON, route SMS through Twilio
-    let targetGatewayId = channel;
-    if(channel==='sms'){
-      const tw = await this.gm.get('twilio').catch(()=>null);
-      if(tw && tw.enabled) targetGatewayId = 'twilio';
-    }
-
-    const g=await this.gm.get(targetGatewayId);
-    if(!g.enabled)throw Object.assign(new Error('Gateway is disabled'),{status:409});
+    const g=await this.gm.get(channel);if(!g.enabled)throw Object.assign(new Error('Gateway is disabled'),{status:409});
     const r=await create(g).send({recipient,title,message},origin),s=await repos.settings.get();
     const log={id:id(),gatewayId:g.id,channel,recipient,title,message,status:r.ok?'sent':'failed',messageId:r.data.messageId||null,
       responseCode:r.status,responseTime:r.ms,errorMessage:r.ok?null:(r.error||r.data.error||'Gateway error'),request:r.request,response:r.data,createdAt:new Date().toISOString()};
     if(s.history)await repos.logs.add(log);
-    if(s.logging)console.log(`[notify] ${channel} via ${g.id} ${log.status} ${r.status} ${r.ms}ms`); // never log secrets
+    if(s.logging)console.log(`[notify] ${channel} ${log.status} ${r.status} ${r.ms}ms`); // never log secrets
     return log}
 }
 class StatisticsService{
   async summary(range){const from=since(range),all=await repos.logs.all(),l=all.filter(x=>x.createdAt>=from);
-    const ok=l.filter(x=>x.status==='sent').length,days={},by={sms:0,zalo:0,push:0,twilio:0};
+    const ok=l.filter(x=>x.status==='sent').length,days={},by={sms:0,zalo:0,push:0};
     l.forEach(x=>{const d=x.createdAt.slice(0,10);days[d]=days[d]||{date:d,sent:0,failed:0};days[d][x.status==='sent'?'sent':'failed']++;by[x.channel]++});
     const t0=new Date();t0.setHours(0,0,0,0);
     const gateways=CH.map(c=>{const a=all.filter(x=>x.channel===c),t=a.filter(x=>x.createdAt>=t0.toISOString()),r=l.filter(x=>x.channel===c),rs=r.filter(x=>x.status==='sent').length;
