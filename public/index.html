@@ -31,8 +31,7 @@ pre{background:var(--bg);padding:10px;border-radius:6px;overflow:auto;font-size:
 #toast div{background:var(--tx);color:var(--bg);padding:10px 14px;border-radius:6px}
 .mask{position:fixed;inset:0;background:#0007;display:grid;place-items:center;z-index:8;padding:16px}.mask .card{width:min(560px,100%);max-height:90vh;overflow:auto}
 .res{margin-top:16px;padding:12px;border-radius:6px;border:1px solid var(--bd)}
-#login{max-width:340px;margin:12vh auto;position:relative;z-index:1}
-#login input{pointer-events:auto;cursor:text;-webkit-user-select:text;user-select:text}
+#login{max-width:340px;margin:12vh auto}
 @media(max-width:800px){#app{grid-template-columns:1fr}aside{display:flex;overflow-x:auto;padding:8px}aside b{display:none}aside a{white-space:nowrap}}
 </style></head><body>
 <div id="root"></div><div id="toast"></div>
@@ -73,6 +72,13 @@ async gateway(id){const g=await api('/gateways/'+id);
   <label>Gateway Token</label><div class="row"><input id="tok" type="password" placeholder="•••••••••••••• (leave blank to keep current)" style="flex:1" autocomplete="off"><button class="b" id="eye" type="button">👁</button></div>
   <label>Timeout (ms)</label><input id="to" type="number" value="${g.timeout}"><label>Retry Attempts</label><input id="rt" type="number" value="${g.retries}">
   <div class="row" style="margin-top:16px"><button class="b p" id="save">Save Changes</button><button class="b" id="tst">Test Connection</button></div><div id="out"></div></div>`},
+async inbox(){const d=await api('/inbox'+(RANGE.ib?'?channel='+RANGE.ib:'')),o=location.origin;
+  return`<div class="row"><h1 style="flex:1">Inbox</h1><button class="b d" id="clr" ${d.total?'':'disabled'}>Clear all</button></div>
+  <div class="card" style="margin-bottom:16px"><h2>Connect your software here</h2><div class="sm">Send <b>POST</b> (JSON or form) with header <b>Authorization: Bearer &lt;token&gt;</b> (default <code>demo-token</code>, change via <code>MOCK_TOKEN</code>).</div>
+  <pre>SMS   ${o}/mock/sms\nZalo  ${o}/mock/zalo\nPush  ${o}/mock/push</pre><div class="sm mu">Accepted fields: phone / to / recipient, message / content / text, optional title, otp / code. OTP is detected automatically from the message.</div></div>
+  <div class="row" style="margin-bottom:12px">${seg([['','All'],['sms','SMS'],['zalo','Zalo'],['push','Push']],RANGE.ib||'','ib')}<span class="mu sm">Auto-refresh every 5s</span></div>
+  <div class="card tw">${d.items.length?`<table><tr><th>Received</th><th>Channel</th><th>To</th><th>OTP</th><th>Message</th><th>Message ID</th><th></th></tr>
+  ${d.items.map(x=>`<tr class="c" data-ib="${x.id}"><td>${dt(x.receivedAt)}</td><td><span class="tag">${NAME[x.channel]}</span></td><td>${esc(x.recipient)}</td><td><b style="font-size:16px">${esc(x.otp||'—')}</b></td><td>${esc(x.message)}</td><td>${esc(x.messageId)}</td><td>${x.otp?`<button class="b" data-cp="${esc(x.otp)}">Copy OTP</button>`:''}</td></tr>`).join('')}</table>`:'<p class="mu">No messages yet. Point your software at one of the URLs above and send a code.</p>'}</div>`},
 async send(){return`<h1>Send Notification</h1><div class="card f"><label>Channel</label><select id="ch"><option value="sms">SMS</option><option value="zalo">Zalo</option><option value="push">Push</option></select>
   <label id="rl">Phone Number</label><input id="rc" placeholder="0901234567"><label>Title</label><input id="ti" value="Thông báo"><label>Message</label><textarea id="ms" rows="4" maxlength="1000"></textarea>
   <div class="mu sm">Tip: include [fail] in the message to simulate a gateway failure.</div><div style="margin-top:12px"><button class="b p" id="go">Send Notification</button></div><div id="out"></div></div>`},
@@ -96,10 +102,10 @@ async settings(){const [s,k]=await Promise.all([api('/settings'),api('/api-keys'
   <div class="card tw">${k.length?`<table><tr><th>Name</th><th>Key</th><th>Created</th><th>Last Used</th><th>Status</th><th></th></tr>${k.map(x=>`<tr><td>${esc(x.name)}</td><td>${x.preview}</td><td>${dt(x.createdAt)}</td><td>${dt(x.lastUsed)}</td><td>${x.status==='active'?'<span class="on2">● Active</span>':'<span class="off">● Revoked</span>'}</td><td>${x.status==='active'?`<button class="b d" data-rv="${x.id}">Revoke</button>`:''}</td></tr>`).join('')}</table>`:'<p class="mu">No API keys yet. Create one to call the send API from your own systems.</p>'}</div>`}
 };
 
-async function route(){const h=location.hash.replace('#','')||'/',p=h.split('?')[0].split('/').filter(Boolean),v=$('#view');
+async function route(quiet){clearInterval(window.__poll);const h=location.hash.replace('#','')||'/',p=h.split('?')[0].split('/').filter(Boolean),v=$('#view');
   document.querySelectorAll('aside a').forEach(a=>a.classList.toggle('on',a.getAttribute('href')==='#'+p.slice(0,2).map(x=>'/'+x).join('')||(a.getAttribute('href')==='#/'&&!p.length)));
-  const map={'':'dash',gateways:p[1]?'gateway':'gateways',notifications:p[1]==='history'?'history':'send',statistics:'stats',settings:'settings'};
-  v.innerHTML='<p class="mu">Loading...</p>';
+  const map={'':'dash',gateways:p[1]?'gateway':'gateways',inbox:'inbox',notifications:p[1]==='history'?'history':'send',statistics:'stats',settings:'settings'};
+  if(!quiet)v.innerHTML='<p class="mu">Loading...</p>';
   try{v.innerHTML=await pages[map[p[0]||'']||'dash'](p[1]);bind(p)}catch(e){v.innerHTML=`<div class="card"><b class="failed">Could not load this page.</b><p>${esc(e.message)}</p><button class="b" onclick="route()">Retry</button></div>`}}
 function bind(p){
   document.querySelectorAll('[data-r]').forEach(b=>b.onclick=()=>{RANGE[b.dataset.k]=b.dataset.r;route()});
@@ -119,6 +125,10 @@ function bind(p){
     document.querySelectorAll('[data-pg]').forEach(b=>b.onclick=()=>{const q=new URLSearchParams(location.hash.split('?')[1]||'');q.set('page',b.dataset.pg);location.hash='#/notifications/history?'+q});
     document.querySelectorAll('[data-log]').forEach(r=>r.onclick=async()=>{const x=await api('/notifications/'+r.dataset.log);
       modal(`<h2>Notification Detail</h2><b>Request</b><pre>${esc(JSON.stringify(x.request,null,2))}</pre><b>Response</b><pre>${esc(JSON.stringify(x.response,null,2))}</pre><p>Gateway: ${NAME[x.channel]}<br>Response Time: ${x.responseTime}ms<br>Created At: ${dt(x.createdAt)}${x.errorMessage?'<br>Error: '+esc(x.errorMessage):''}</p>`)})}
+  if(p[0]==='inbox'){window.__poll=setInterval(()=>{if(!document.querySelector('.mask'))route(true)},5000);
+    document.querySelectorAll('[data-cp]').forEach(b=>b.onclick=e=>{e.stopPropagation();navigator.clipboard.writeText(b.dataset.cp).then(()=>toast('OTP copied'))});
+    $('#clr').onclick=()=>confirmBox('Delete all received messages?',async()=>{await api('/inbox',{method:'DELETE'});toast('Inbox cleared');route()});
+    window.__ib=null;api('/inbox').then(d=>{const M={};d.items.forEach(x=>M[x.id]=x);document.querySelectorAll('[data-ib]').forEach(r=>r.onclick=()=>{const x=M[r.dataset.ib];if(x)modal(`<h2>${NAME[x.channel]} message</h2><p>To: ${esc(x.recipient)}<br>Received: ${dt(x.receivedAt)}${x.title?'<br>Title: '+esc(x.title):''}</p><p>${esc(x.message)}</p><b>Raw payload</b><pre>${esc(JSON.stringify(x.payload,null,2))}</pre>`)})})}
   if(p[0]==='settings'){
     $('#ss').onclick=async()=>{try{await api('/settings',{method:'PUT',body:{defaultGateway:$('#dg').value,timeout:+$('#gt').value,retries:+$('#gr').value,logging:$('#lg').checked,history:$('#hs').checked}});toast('Settings saved')}catch(e){toast(e.message,1)}};
     $('#rs').onclick=()=>confirmBox('Reset all settings to defaults?',async()=>{await api('/settings/reset',{method:'POST'});toast('Settings reset');route()});
@@ -128,11 +138,11 @@ function bind(p){
     document.querySelectorAll('[data-rv]').forEach(b=>b.onclick=()=>confirmBox('Revoke this API key? Systems using it will stop working.',async()=>{await api('/api-keys/'+b.dataset.rv,{method:'DELETE'});toast('Key revoked');route()}))}}
 
 function render(){const r=$('#root');
-  if(!T){r.innerHTML=`<div id="login" class="card"><h1>Notification Gateway</h1><label>Username</label><input id="u" autocomplete="username"><label>Password</label><input id="pw" type="password" autocomplete="current-password"><div id="le" class="failed sm" style="margin:8px 0"></div><button class="b p" id="lg">Sign in</button></div>`;
+  if(!T){r.innerHTML=`<div id="login" class="card"><h1>Notification Gateway</h1><label>Username</label><input id="u" autocomplete="username"><label>Password</label><input id="pw" type="password" autocomplete="current-password" style="pointer-events:auto;user-select:auto"><div id="le" class="failed sm" style="margin:8px 0"></div><button class="b p" id="loginBtn">Sign in</button></div>`;
     const go=async()=>{try{T=(await api('/auth/login',{method:'POST',body:{username:$('#u').value,password:$('#pw').value}})).token;sessionStorage.t=T;render()}catch(e){$('#le').textContent=e.message}};
-    $('#lg').onclick=go;$('#pw').onkeydown=e=>{if(e.key==='Enter')go()};return}
+    $('#loginBtn').onclick=go;$('#u').onkeydown=e=>{if(e.key==='Enter')go()};$('#pw').onkeydown=e=>{if(e.key==='Enter')go()};return}
   r.innerHTML=`<div id="app"><aside><b>🔔 Notification Gateway</b><a href="#/">Dashboard</a><a href="#/gateways">Gateways</a><a class="sub" href="#/gateways/sms">SMS</a><a class="sub" href="#/gateways/zalo">Zalo</a><a class="sub" href="#/gateways/push">Push</a>
-  <a href="#/notifications/send">Send Notification</a><a href="#/notifications/history">History</a><a href="#/statistics">Statistics</a><a href="#/settings">Settings</a></aside>
+  <a href="#/inbox">Inbox</a><a href="#/notifications/send">Send Notification</a><a href="#/notifications/history">History</a><a href="#/statistics">Statistics</a><a href="#/settings">Settings</a></aside>
   <main><header><b>Notification Gateway</b><span class="mu" id="env">Environment: …</span><span class="sp"></span><span class="dot" id="sys">● System Online</span><span>Admin</span><button class="b" id="lo">Sign out</button></header><div id="view"></div></main></div>`;
   $('#lo').onclick=()=>{sessionStorage.removeItem('t');T=null;render()};
   fetch('/api/health').then(r=>r.json()).then(h=>$('#env').textContent='Environment: '+h.env).catch(()=>{$('#sys').textContent='● System Offline';$('#sys').style.color='var(--er)'});
