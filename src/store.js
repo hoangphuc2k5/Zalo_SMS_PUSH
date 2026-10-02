@@ -24,8 +24,17 @@ if (!process.env.DATABASE_URL) {
   console.warn('[store] WARNING: DATABASE_URL is not set. Database queries will fail.');
 }
 
+const connectionString = (() => {
+  if (!process.env.DATABASE_URL) return undefined;
+  const u = new URL(process.env.DATABASE_URL);
+  if (['prefer', 'require', 'verify-ca'].includes(u.searchParams.get('sslmode')) && !u.searchParams.has('uselibpqcompat')) {
+    u.searchParams.set('uselibpqcompat', 'true');
+  }
+  return u.toString();
+})();
+
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString,
   ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false,
   max: 5,
   idleTimeoutMillis: 30000,
@@ -56,6 +65,10 @@ async function ensureSchema() {
       ('zalo', 'Zalo', 'zalo'),
       ('push', 'Push', 'push')
     ON CONFLICT (id) DO NOTHING;
+
+    UPDATE gateways
+    SET type = id
+    WHERE id IN ('sms', 'zalo', 'push') AND type IS DISTINCT FROM id;
 
     CREATE TABLE IF NOT EXISTS logs (
       id            TEXT PRIMARY KEY,
@@ -125,8 +138,8 @@ const DEFAULTS = { defaultGateway: 'push', timeout: 5000, retries: 3, logging: t
 // ── Repos ─────────────────────────────────────────────────────────────────────
 const repos = {
   gateways: {
-    all: async () => { await ensureSchema(); const { rows } = await pool.query('SELECT * FROM gateways ORDER BY id'); return rows.map(mapGateway); },
-    get: async i => { await ensureSchema(); const { rows } = await pool.query('SELECT * FROM gateways WHERE id=$1', [i]); return rows[0] ? mapGateway(rows[0]) : null; },
+    all: async () => { await ensureSchema(); const { rows } = await pool.query("SELECT * FROM gateways WHERE id IN ('sms','zalo','push') ORDER BY id"); return rows.map(mapGateway); },
+    get: async i => { await ensureSchema(); const { rows } = await pool.query("SELECT * FROM gateways WHERE id=$1 AND id IN ('sms','zalo','push')", [i]); return rows[0] ? mapGateway(rows[0]) : null; },
     update: async (i, p) => {
       await ensureSchema();
       const sets = [], vals = [];
@@ -211,4 +224,3 @@ const repos = {
 };
 
 module.exports = { repos, enc, dec, id };
-

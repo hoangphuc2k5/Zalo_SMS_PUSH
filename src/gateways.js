@@ -24,4 +24,8 @@ class SmsGateway extends NotificationGateway{buildPayload(m){return{phone:m.reci
 class ZaloGateway extends NotificationGateway{buildPayload(m){return{phone:m.recipient,message:m.message}}}
 class PushGateway extends NotificationGateway{buildPayload(m){return{recipient:m.recipient,title:m.title,message:m.message}}}
 const map={sms:SmsGateway,zalo:ZaloGateway,push:PushGateway};
-module.exports={create:g=>new map[g.type](g)};
+module.exports={create:g=>{
+  const Gateway=map[String(g?.type||'').toLowerCase()];
+  if(!Gateway)throw Object.assign(new Error(`Unsupported gateway type: ${g?.type||'(empty)'}`),{status:400});
+  return new Gateway(g);
+}};
